@@ -30,7 +30,7 @@ The SPA and the API are served from **one origin**, which is what allows the aut
 | [client/](client/README.md) | React 19, TypeScript, Vite, MUI 7, TanStack Query, React Router 7, React Hook Form |
 | [server/](server/README.md) | Java 17, Spring Boot 3.5, Spring Security, Spring Data JPA, Flyway, Redis |
 | Tests | JUnit 5 + Mockito, Testcontainers, Vitest + Testing Library + MSW, Playwright |
-| Delivery | Docker multi-stage images (non-root), Docker Compose, GitHub Actions, Dependabot |
+| Delivery | Docker multi-stage images (non-root), Docker Compose, GitHub Actions |
 
 ## Security model
 
@@ -93,5 +93,3 @@ Projects created before ownership existed have no owner and are visible to the a
 2. **Frontend** – Prettier, ESLint, TypeScript, Vitest, production build.
 3. **E2E** – starts the full Compose stack with random secrets and runs Playwright (desktop + mobile).
 4. **Publish** – only on `main`: pushes both images to GHCR tagged with the commit SHA and `latest`.
-
-Dependabot keeps npm, Maven, Docker and GitHub Actions dependencies up to date.
