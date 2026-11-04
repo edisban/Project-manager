@@ -1,166 +1,78 @@
-# Project Manager – Backend (Spring Boot)
+# Project Manager – API (Spring Boot)
 
-## Overview
-This backend provides the REST API for the Project Manager application. It is built with Spring Boot 3 and targets Java 17. The service handles authentication (JWT), project and student CRUD, search, caching, and database migrations via Flyway.
+Java 17 · Spring Boot 3.5 · Spring Security · Spring Data JPA · PostgreSQL · Flyway · Redis
 
-## Tech Stack
-- Java 17
-- Spring Boot 3
-- Spring Data JPA / Hibernate
-- PostgreSQL
-- Flyway (database migrations)
-- Redis (Lettuce) for caching and token blacklisting
-- Maven for build and dependency management
-
-## Architecture — Clean / Layered
-The codebase follows a layered architecture to keep concerns separated:
-
-- Controllers: HTTP endpoints that validate input and translate to service calls.
-- Services: Business logic, transactions, and orchestration between repositories and other services.
-- Repositories: Spring Data JPA interfaces handling persistence operations.
-- DTOs: Data Transfer Objects used to isolate internal Entities from API contracts.
-- Entities: JPA-mapped domain objects representing tables (Project, Student, User).
-
-This separation makes the code easier to test and evolve.
-
-## Caching & Redis
-- Selective caching is applied using Spring Cache annotations. Caches have per-cache TTLs configured by a custom `RedisCacheManager`:
-  - `projects` cache: 10 minutes
-  - `students` cache: 5 minutes
-  - `metadata` cache: 1 hour
-- Write operations evict relevant caches to keep PostgreSQL authoritative.
-- JWT Blacklisting: On logout, JWTs are written to Redis with TTL equal to the token remaining lifetime. A `TokenBlacklistService` checks Redis to reject blacklisted tokens.
-
-## Database Migrations (Flyway)
-- Flyway SQL scripts are placed in `src/main/resources/db/migration` and are applied automatically on application startup.
-- Seed data scripts (e.g., `V2__seed_data.sql`) exist for local/dev convenience; CI also runs migrations during builds.
-
-## Project Structure
+## Structure
 
 ```
-server/
-├── src/
-│   ├── main/
-│   │   ├── java/com/edis/backendproject/
-│   │   │   ├── BackendProjectApplication.java    # Spring Boot entry point
-│   │   │   ├── controller/
-│   │   │   │   ├── AuthController.java           # Login, register, logout
-│   │   │   │   ├── ProjectController.java        # Project CRUD
-│   │   │   │   └── StudentController.java        # Student CRUD & search
-│   │   │   ├── service/
-│   │   │   │   ├── UserService.java              # User registration & management
-│   │   │   │   ├── ProjectService.java           # Project business logic
-│   │   │   │   ├── StudentService.java           # Student business logic
-│   │   │   │   └── TokenBlacklistService.java    # JWT blacklist on logout
-│   │   │   ├── repository/
-│   │   │   │   ├── UserRepository.java           # User persistence
-│   │   │   │   ├── ProjectRepository.java        # Project persistence
-│   │   │   │   └── StudentRepository.java        # Student persistence
-│   │   │   ├── entity/
-│   │   │   │   ├── User.java
-│   │   │   │   ├── Project.java
-│   │   │   │   └── Student.java
-│   │   │   ├── dto/
-│   │   │   │   ├── ProjectRequest.java
-│   │   │   │   ├── ProjectResponse.java
-│   │   │   │   ├── StudentRequest.java
-│   │   │   │   ├── StudentResponse.java
-│   │   │   │   └── RegisterRequest.java
-│   │   │   ├── security/
-│   │   │   │   ├── SecurityConfig.java           # Spring Security configuration
-│   │   │   │   ├── JwtAuthenticationFilter.java  # JWT validation filter
-│   │   │   │   └── JwtTokenProvider.java         # JWT creation/validation
-│   │   │   └── config/
-│   │   │       └── RedisCacheConfig.java         # Redis & cache configuration
-│   │   └── resources/
-│   │       ├── application.properties             # Spring Boot config
-│   │       ├── logback-spring.xml                 # Logging config
-│   │       └── db/migration/
-│   │           ├── V1__init_schema.sql           # Create tables
-│   │           ├── V2__seed_data.sql             # Sample data
-│   │           └── V3__alter_*.sql               # Schema changes
-│   └── test/
-│       └── java/com/edis/backendproject/service/
-│           ├── ProjectServiceTest.java
-│           ├── StudentServiceTest.java
-│           └── UserServiceTest.java
-├── pom.xml                      # Maven dependencies
-├── Dockerfile
-├── mvnw
-├── mvnw.cmd
-└── README.md
+src/main/java/com/edis/backendproject/
+├── controller/   REST endpoints (thin: validation, HTTP status codes, cookies)
+├── service/      Business rules, authorization (ownership) and transactions
+├── repository/   Spring Data JPA repositories and JPQL search queries
+├── model/        JPA entities: User, Role, Project, Student
+├── dto/          Request/response records, ApiResponse envelope, PageResponse
+├── security/     JWT, auth cookie, CSRF, security filter chain
+├── exception/    Domain exceptions and the global exception handler
+└── config/       Admin bootstrap, Flyway strategy
+src/main/resources/db/migration/   Flyway migrations (V1, V6 – V2-V5 are retired numbers)
+src/test/java/…/service/           Unit tests (Mockito)
+src/test/java/…/api/               Integration tests (*IT, Testcontainers PostgreSQL + Redis)
 ```
 
-## API Endpoints
+Entities never leave the service layer; controllers return DTOs.
 
-Base URL: `http://localhost:8081/api` (when running locally)
+## API
 
-### Authentication
+Every response uses the envelope `{ success, message, data, validationErrors?, timestamp }`.
+Lists are paginated: `?page=0&size=12&sort=name,asc&q=search` →
+`{ content, page, size, totalElements, totalPages }`. Timestamps are UTC instants (ISO-8601, `Z`).
 
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------| 
-| POST | `/auth/register` | Register new user | ❌ No |
-| POST | `/auth/login` | Login (returns JWT) | ❌ No |
-| POST | `/auth/logout` | Logout & blacklist token | ✅ Yes |
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/auth/csrf` | Issues the `XSRF-TOKEN` cookie (204) |
+| POST | `/api/auth/register` | 201; 409 if the username is taken |
+| POST | `/api/auth/login` | Sets the HttpOnly `access_token` cookie; 401 / 429 |
+| POST | `/api/auth/logout` | Revokes the token and clears the cookie |
+| GET | `/api/auth/me` | Current user, role and session expiry |
+| GET | `/api/projects` | `q`, `page`, `size`, `sort` ∈ `createdAt`, `name`, `studentCount` |
+| POST | `/api/projects` | 201 + `Location`; 409 on duplicate name (per owner) |
+| GET / PUT / DELETE | `/api/projects/{id}` | DELETE → 204 (students are deleted too) |
+| GET | `/api/projects/{id}/students` | `q` matches first/last/full name or student ID |
+| POST | `/api/students` | 201; 409 on duplicate student ID within the project |
+| GET / PUT / DELETE | `/api/students/{id}` | PUT may change `projectId` to move the student |
+| DELETE | `/api/users/me` | Deletes the account and its projects (not allowed for the admin) |
+| GET | `/api/dashboard` | Totals, 14-day activity (UTC days), top projects, newest students |
+| GET | `/actuator/health` | Public |
 
-### Projects
+State-changing requests need the `X-XSRF-TOKEN` header. Projects and students of other users
+return 404.
 
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------| 
-| GET | `/projects` | List all projects | ✅ Yes |
-| GET | `/projects/{id}` | Get project by ID | ✅ Yes |
-| POST | `/projects` | Create project | ✅ Yes |
-| PUT | `/projects/{id}` | Update project | ✅ Yes |
-| DELETE | `/projects/{id}` | Delete project | ✅ Yes |
+## Configuration
 
-### Students
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | – | PostgreSQL connection |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_SSL` | `localhost`, `6379`, –, `false` | Redis |
+| `JWT_SECRET` | – | ≥ 32 characters, start-up fails otherwise |
+| `JWT_EXPIRATION` | `86400000` | Token lifetime in ms |
+| `AUTH_COOKIE_SECURE` | `false` | Must be `true` behind HTTPS |
+| `MAX_LOGIN_ATTEMPTS`, `LOGIN_LOCKOUT` | `5`, `15m` | Brute-force protection |
+| `APP_ADMIN_USERNAME`, `APP_ADMIN_PASSWORD` | – | Admin created on first start (password ≥ 8 chars) |
+| `CORS_ALLOWED_ORIGINS` | empty | Only for frontends on another origin; CORS is off when empty |
+| `FLYWAY_REPAIR_ON_START` | `false` | One-off repair for databases from older versions |
+| `SPRING_PROFILES_ACTIVE=prod` | – | JSON (Logstash) console logging |
 
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------| 
-| GET | `/students` | List all students (supports search filtering by name or ID) | ✅ Yes |
-| GET | `/students/{id}` | Get student by ID | ✅ Yes |
-| POST | `/students` | Create student | ✅ Yes |
-| PUT | `/students/{id}` | Update student | ✅ Yes |
-| DELETE | `/students/{id}` | Delete student | ✅ Yes |
+## Running locally without Docker
 
-### User Account
-
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------| 
-| DELETE | `/users/me` | Delete current user account | ✅ Yes |
-
-### Health Check
-
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------| 
-| GET | `/actuator/health` | Service health status | ❌ No |
-
-## Local Development (Without Docker)
-Requirements: Java 17, Maven, a running PostgreSQL instance (or set DB URL to a local instance).
-
-Run the application locally:
+Start PostgreSQL and Redis, export the variables above, then:
 
 ```bash
-cd server
-mvn spring-boot:run
+./mvnw spring-boot:run
 ```
 
-Apply migrations manually:
+## Tests
 
 ```bash
-mvn -pl server flyway:migrate
+./mvnw test      # unit tests only
+./mvnw verify    # unit + integration tests (requires Docker for Testcontainers)
 ```
-
-Run tests:
-
-```bash
-mvn -pl server test
-```
-
-## Security
-- JWT based authentication with BCrypt password hashing.
-- Protected endpoints require a valid JWT; expired or blacklisted tokens are rejected.
-
-## Notes
-- Admin account is provisioned from environment variables `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD` during startup.
-- For local development using Docker, use the `docker compose` commands from the main README.
