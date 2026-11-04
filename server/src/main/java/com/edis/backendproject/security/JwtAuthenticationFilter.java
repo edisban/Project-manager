@@ -2,73 +2,71 @@ package com.edis.backendproject.security;
 
 import java.io.IOException;
 
-import java.util.Objects;
-
+import org.springframework.dao.DataAccessException;
 import org.springframework.lang.NonNull;
-import org.springframework.lang.Nullable;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.edis.backendproject.service.CustomUserDetailsService;
 import com.edis.backendproject.service.TokenBlacklistService;
 
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.UnsupportedJwtException;
-import io.jsonwebtoken.security.SignatureException;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-
+/**
+ * Authenticates requests that carry a valid, non-revoked JWT in the auth cookie.
+ * Requests without one simply continue unauthenticated; authorization rules decide what happens next.
+ */
+@Slf4j
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
-    private final CustomUserDetailsService customUserDetailsService;
+    private final AuthCookieService authCookieService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final UserDetailsService userDetailsService;
 
     @Override
-    protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
-            throws ServletException, IOException {
-
-        try {
-            String jwt = getJwtFromRequest(request);
-
-            if (StringUtils.hasText(jwt)) {
-                String token = Objects.requireNonNull(jwt);
-                if (tokenBlacklistService.isBlacklisted(token)) {
-                    logger.debug("Blocked blacklisted JWT for URI " + request.getRequestURI());
-                } else if (tokenProvider.validateToken(token)) {
-                    String username = tokenProvider.getUsernameFromToken(token);
-                    UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
-
-                    UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
-                }
-            }
-        } catch (ExpiredJwtException | SignatureException | MalformedJwtException | UnsupportedJwtException | IllegalArgumentException ex) {
-            logger.warn("Invalid JWT", ex);
-        }
-
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain) throws ServletException, IOException {
+        authCookieService.read(request).ifPresent(token -> authenticate(token, request));
         filterChain.doFilter(request, response);
     }
 
-
-    private @Nullable String getJwtFromRequest(HttpServletRequest request) {
-        String bearerToken = request.getHeader("Authorization");
-        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
+    private void authenticate(String token, HttpServletRequest request) {
+        Claims claims = tokenProvider.parse(token).orElse(null);
+        if (claims == null) {
+            return;
         }
-        return null;
+        try {
+            if (tokenBlacklistService.isRevoked(token)) {
+                return;
+            }
+        } catch (DataAccessException ex) {
+            // Fail closed: if revocation status cannot be checked, do not trust the token.
+            log.error("Could not check token revocation status", ex);
+            return;
+        }
+        try {
+            AppUserPrincipal principal = (AppUserPrincipal) userDetailsService.loadUserByUsername(claims.getSubject());
+            UsernamePasswordAuthenticationToken authentication =
+                    UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities());
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(authentication);
+            SecurityContextHolder.setContext(context);
+        } catch (UsernameNotFoundException ex) {
+            log.debug("Token subject no longer exists");
+        }
     }
 }

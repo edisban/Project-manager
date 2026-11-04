@@ -30,3 +30,9 @@ client/.env.*
 .env
 .env.*
 !.env.docker.example
+# =================================================================
+# 4. TEST OUTPUT
+# =================================================================
+client/playwright-report/
+client/test-results/
+client/blob-report/

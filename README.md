@@ -1,147 +1,97 @@
-# Project Manager Full-Stack System
+# Project Manager
 
-## 💡 What does this application do? (Core Features)
-- User Authentication: register, login, logout (JWT-based), and delete account.
-- Project Dashboard: create, read, update, delete projects and view metadata.
-- Student Management: add/edit/remove students tied to projects; search by name or student ID.
-- Smart Search: fast, incremental search in the UI with server-side filtering by name or ID.
+A full-stack app for organising projects and the students working on them.
 
-## 🏗️ System Architecture
-The platform runs as a containerized full-stack application composed of:
+- **Landing page** – a public introduction for visitors; signed-in users go straight to their overview.
+- **Overview dashboard** – totals, students added per day (last 14 days), largest projects and newest students.
+- **Welcome tour** – a short guided tour on first sign-in; replay it any time from the account menu.
+- **Accounts** – self-service sign-up and sign-in; delete your own account (and its data).
+- **Projects** – create, rename, delete; search, sort and paginate; student counts per project.
+- **Students** – add, edit, remove and move between projects; partial search by name or student ID
+  (any alphabet, e.g. Greek); paginated table on desktop, cards on mobile.
+- **Privacy** – every project belongs to its creator. Users only ever see their own projects;
+  the administrator account sees and manages all of them.
+- Light and dark theme (follows the system by default).
 
-- Frontend: React + Vite (served behind Nginx)
-- Backend: Spring Boot REST API (Java 17)
-- Database: PostgreSQL
-- Cache: Redis (optional but recommended for caching and blacklist)
-
-Data flow (text diagram):
-
-Client -> Nginx Proxy -> Backend -> Postgres / Redis
-
-### Architecture Diagram
-
-Client -> Nginx Proxy -> Backend -> Postgres / Redis
-
-## Project Structure
+## Architecture
 
 ```
-Fullstackproject/
-├── .github/
-│   └── workflows/
-│       └── ci.yml              # GitHub Actions CI/CD pipeline
-├── client/                      # Frontend (React + TypeScript)
-│   ├── src/
-│   │   ├── components/          # UI components (logic-less)
-│   │   ├── hooks/               # Custom hooks (business logic)
-│   │   ├── pages/               # Page components
-│   │   ├── api/                 # API client (Axios)
-│   │   ├── context/             # React context (Auth, Snackbar)
-│   │   ├── types/               # TypeScript type definitions
-│   │   ├── utils/               # Utility functions
-│   │   ├── e2e/                 # Selenium E2E tests
-│   │   └── App.tsx              # Root component
-│   ├── Dockerfile               # Container image
-│   ├── nginx.conf               # Reverse proxy config
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-├── server/                      # Backend (Spring Boot)
-│   ├── src/
-│   │   ├── main/java/com/edis/backendproject/
-│   │   │   ├── controller/      # REST endpoints
-│   │   │   ├── service/         # Business logic
-│   │   │   ├── repository/      # Data access (JPA)
-│   │   │   ├── entity/          # JPA entities
-│   │   │   ├── dto/             # Data transfer objects
-│   │   │   ├── security/        # JWT & authentication
-│   │   │   └── config/          # Spring configuration
-│   │   ├── main/resources/
-│   │   │   ├── application.properties
-│   │   │   └── db/migration/    # Flyway SQL migrations
-│   │   └── test/java/           # Unit & integration tests
-│   ├── Dockerfile
-│   ├── pom.xml                  # Maven dependencies
-│   └── mvnw                     # Maven wrapper
-├── docker-compose.yml           # Container orchestration
-├── .env                         # Local secrets (git-ignored)
-├── .env.docker.example          # Template for .env
-├── .gitignore
-└── README.md                    # This file
+Browser ──► nginx (frontend container, :4173)
+              ├── /          React SPA (static files)
+              └── /api/*  ─► Spring Boot API ──► PostgreSQL  (data, Flyway migrations)
+                                             └─► Redis       (token revocation, login rate limiting)
 ```
 
-## Prerequisites
-- Docker
-- Docker Compose
+The SPA and the API are served from **one origin**, which is what allows the auth cookie to be
+`SameSite=Strict`. Only the frontend port is published on the host.
 
-## 🐳 Quick Start (Local with Docker)
-1. Create a `.env` from the example (choose command for your shell):
+| Part | Stack |
+|------|-------|
+| [client/](client/README.md) | React 19, TypeScript, Vite, MUI 7, TanStack Query, React Router 7, React Hook Form |
+| [server/](server/README.md) | Java 17, Spring Boot 3.5, Spring Security, Spring Data JPA, Flyway, Redis |
+| Tests | JUnit 5 + Mockito, Testcontainers, Vitest + Testing Library + MSW, Playwright |
+| Delivery | Docker multi-stage images (non-root), Docker Compose, GitHub Actions, Dependabot |
 
-   - macOS / Linux / WSL:
-     ```bash
-     cp .env.docker.example .env
-     ```
-   - PowerShell (Windows):
-     ```powershell
-     Copy-Item .env.docker.example .env
-     ```
-   - cmd.exe (Windows):
-     ```cmd
-     copy .env.docker.example .env
-     ```
+## Security model
 
-2. Start the stack:
+- Passwords hashed with BCrypt; the API never returns the JWT in a response body.
+- The JWT travels in an **HttpOnly, SameSite=Strict** cookie (`Secure` when `AUTH_COOKIE_SECURE=true`),
+  so JavaScript cannot read it.
+- **CSRF** protection with the double-submit cookie pattern (`XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header).
+- **Logout and account deletion revoke the token** server-side (hash stored in Redis until expiry).
+- **Brute-force protection**: 5 failed logins per username + IP → HTTP 429 for 15 minutes.
+- Authorization on every request: other users' projects/students respond with 404, so their existence is not revealed.
+- nginx sends a strict Content-Security-Policy and other security headers; containers run as non-root.
+
+## Quick start (Docker)
+
+Requirements: Docker with Compose v2.
 
 ```bash
-docker compose up --build -d
+cp .env.docker.example .env      # PowerShell: Copy-Item .env.docker.example .env
+# Edit .env and replace every "change-me" value (e.g. `openssl rand -base64 48`).
+docker compose up -d --build --wait
 ```
 
-3. Verify services:
+Open <http://localhost:4173> and create an account, or sign in with `APP_ADMIN_USERNAME` /
+`APP_ADMIN_PASSWORD` to see everything.
+
+Need direct access to the API, database or Redis from local tools? Add the debug overlay, which
+publishes them on `127.0.0.1` (ports from `.env`):
 
 ```bash
-docker compose ps
-docker compose logs -f backend
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 ```
 
-4. Access the app (using ports from your `.env`):
+### Upgrading an existing database
 
-- Frontend: http://localhost:4173 (default)
-- Backend API: http://localhost:8081 (default)
-
-5. Create an account via the frontend's "Create Account" tab.
-
-## 🛠️ Tech Stack & Tooling
-- Backend: Spring Boot 3, Java 17, Spring Data JPA, Flyway for migrations
-- Frontend: React 18, TypeScript, Vite, Material UI
-- Cache: Redis (Lettuce)
-- DevOps: Docker, Docker Compose, Nginx reverse proxy
-
-## ⚙️ CI/CD
-- GitHub Actions builds backend and frontend images and publishes to GitHub Container Registry. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
-
-## 🧪 Testing
-- Unit and integration tests for backend (Maven) and frontend (Vitest). E2E tests use Selenium and require Docker services running.
-
-## 🗄️ Database Migrations
-- Flyway is used to manage schema and seed data. Migration scripts live in [server/src/main/resources/db/migration](server/src/main/resources/db/migration). The backend runs Flyway on startup.
-
-## Troubleshooting
-- Check container logs:
+Older versions of this repository applied migrations that were later edited or deleted. If the
+backend fails at start-up with a Flyway validation error, start it once with
+`FLYWAY_REPAIR_ON_START=true` (repairs the history table only, never data), then remove the variable:
 
 ```bash
-docker compose logs -f backend
-docker compose logs -f frontend
+FLYWAY_REPAIR_ON_START=true docker compose up -d --wait backend
+docker compose up -d --wait backend
 ```
 
-- Health check example:
+Projects created before ownership existed have no owner and are visible to the administrator only.
 
-```bash
-curl http://localhost/api/students
-```
+## Development
 
-- Restart services:
+| Task | Command |
+|------|---------|
+| Backend tests (unit + integration, needs Docker) | `cd server && ./mvnw verify` |
+| Frontend dev server (proxies `/api` to `localhost:8080`) | `cd client && npm run dev` |
+| Frontend checks | `cd client && npm run lint && npm run typecheck && npm test` |
+| End-to-end tests (stack must be running) | `cd client && npm run test:e2e` |
 
-```bash
-docker compose restart
-```
+## CI/CD
 
----
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request:
+
+1. **Backend** – `mvn verify` (unit tests + Testcontainers integration tests).
+2. **Frontend** – Prettier, ESLint, TypeScript, Vitest, production build.
+3. **E2E** – starts the full Compose stack with random secrets and runs Playwright (desktop + mobile).
+4. **Publish** – only on `main`: pushes both images to GHCR tagged with the commit SHA and `latest`.
+
+Dependabot keeps npm, Maven, Docker and GitHub Actions dependencies up to date.

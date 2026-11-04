@@ -1,118 +1,113 @@
 package com.edis.backendproject.controller;
 
-import com.edis.backendproject.dto.ApiResponse;
-import com.edis.backendproject.dto.LoginRequest;
-import com.edis.backendproject.dto.RegisterRequest;
-import com.edis.backendproject.model.User;
-import com.edis.backendproject.security.BearerTokenExtractor;
-import com.edis.backendproject.service.TokenBlacklistService;
-import com.edis.backendproject.service.UserService;
+import java.time.Instant;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.edis.backendproject.dto.ApiResponse;
+import com.edis.backendproject.dto.AuthUserResponse;
+import com.edis.backendproject.dto.LoginRequest;
+import com.edis.backendproject.dto.RegisterRequest;
+import com.edis.backendproject.model.User;
+import com.edis.backendproject.security.AppUserPrincipal;
+import com.edis.backendproject.security.AuthCookieService;
 import com.edis.backendproject.security.JwtTokenProvider;
+import com.edis.backendproject.service.LoginAttemptService;
+import com.edis.backendproject.service.TokenBlacklistService;
+import com.edis.backendproject.service.UserService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-
+@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
-    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
-    private final UserService userService;
+    private final AuthCookieService authCookieService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final LoginAttemptService loginAttemptService;
+    private final UserService userService;
 
-    @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<Map<String, String>>> loginJson(@Valid @RequestBody LoginRequest loginRequest) {
-        return authenticate(loginRequest);
+    /** Issues the {@code XSRF-TOKEN} cookie; the SPA calls this before its first state-changing request. */
+    @GetMapping("/csrf")
+    public ResponseEntity<Void> csrf() {
+        return ResponseEntity.noContent().build();
     }
 
-    @PostMapping(value = "/login", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-    public ResponseEntity<ApiResponse<Map<String, String>>> loginForm(@Valid LoginRequest loginRequest) {
-        return authenticate(loginRequest);
+    @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ApiResponse<AuthUserResponse>> login(@Valid @RequestBody LoginRequest request,
+                                                               HttpServletRequest httpRequest) {
+        String username = request.username().trim();
+        String clientIp = httpRequest.getRemoteAddr();
+        loginAttemptService.ensureNotLocked(username, clientIp);
+
+        Authentication authentication;
+        try {
+            authentication = authenticationManager.authenticate(
+                    UsernamePasswordAuthenticationToken.unauthenticated(username, request.password()));
+        } catch (AuthenticationException ex) {
+            loginAttemptService.recordFailure(username, clientIp);
+            log.info("Failed login attempt for '{}' from {}", username, clientIp);
+            throw new BadCredentialsException("Invalid username or password");
+        }
+        loginAttemptService.reset(username, clientIp);
+
+        AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
+        JwtTokenProvider.IssuedToken token = tokenProvider.generate(principal.getUsername());
+        log.info("User '{}' signed in", principal.getUsername());
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, authCookieService.create(token).toString())
+                .body(ApiResponse.success("Signed in",
+                        new AuthUserResponse(principal.getUsername(), principal.getRole(), token.expiresAt())));
     }
 
     @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<Map<String, String>>> register(@Valid @RequestBody RegisterRequest registerRequest) {
-        User createdUser = userService.registerUser(registerRequest);
-        Map<String, String> data = new HashMap<>();
-        data.put("username", createdUser.getUsername());
-        log.info("User {} registered successfully", createdUser.getUsername());
+    public ResponseEntity<ApiResponse<AuthUserResponse>> register(@Valid @RequestBody RegisterRequest request) {
+        User user = userService.register(request);
+        log.info("User '{}' registered", user.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.success("Your account was created successfully.", data));
+                .body(ApiResponse.success("Account created",
+                        new AuthUserResponse(user.getUsername(), user.getRole(), null)));
     }
 
+    /** Revokes the current token (if any) and clears the auth cookie. Safe to call when signed out. */
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
-            Authentication authentication) {
-        String token = BearerTokenExtractor.extract(authorizationHeader).orElse(null);
-        if (token == null) {
-            return ResponseEntity.badRequest().body(ApiResponse.<Void>error("Missing Authorization header"));
-        }
-
-        tokenBlacklistService.blacklistToken(token);
-
-        String username = (authentication != null && authentication.getName() != null) ? authentication.getName() : "unknown";
-        log.info("User {} logged out", username);
-
-        return ResponseEntity.ok(ApiResponse.<Void>success("Logout successful", null));
+    public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest request) {
+        authCookieService.read(request).ifPresent(tokenBlacklistService::revoke);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, authCookieService.clear().toString())
+                .body(ApiResponse.success("Signed out", null));
     }
 
-    private ResponseEntity<ApiResponse<Map<String, String>>> authenticate(LoginRequest loginRequest) {
-        try {
-            Authentication authentication = Objects.requireNonNull(
-                    authenticationManager.authenticate(
-                            new UsernamePasswordAuthenticationToken(
-                                    loginRequest.getUsername(),
-                                    loginRequest.getPassword()
-                            )
-                    ),
-                    "Authentication cannot be null"
-            );
-
-            String token = tokenProvider.generateToken(authentication);
-
-            Map<String, String> data = new HashMap<>();
-            data.put("token", token);
-            data.put("username", loginRequest.getUsername());
-
-            log.info("User {} authenticated successfully", loginRequest.getUsername());
-            ResponseEntity<ApiResponse<Map<String, String>>> response = ResponseEntity.ok(ApiResponse.success("Login successful", data));
-            return Objects.requireNonNull(response);
-        } catch (AuthenticationException ex) {
-            log.warn("Failed login attempt for {}", loginRequest.getUsername());
-            ResponseEntity<ApiResponse<Map<String, String>>> unauthorizedResponse = ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(ApiResponse.error("Invalid username or password"));
-            return Objects.requireNonNull(unauthorizedResponse);
-        } catch (Exception ex) {
-            log.error("Unexpected login error for {}", loginRequest.getUsername(), ex);
-            ResponseEntity<ApiResponse<Map<String, String>>> errorResponse = ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(ApiResponse.error("Unexpected error occurred"));
-            return Objects.requireNonNull(errorResponse);
-        }
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<AuthUserResponse>> me(@AuthenticationPrincipal AppUserPrincipal principal,
+                                                            HttpServletRequest request) {
+        Instant expiresAt = authCookieService.read(request)
+                .flatMap(tokenProvider::parse)
+                .map(claims -> claims.getExpiration().toInstant())
+                .orElse(null);
+        return ResponseEntity.ok(ApiResponse.success(
+                new AuthUserResponse(principal.getUsername(), principal.getRole(), expiresAt)));
     }
 }

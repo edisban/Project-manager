@@ -1,79 +1,62 @@
 package com.edis.backendproject.security;
 
 import java.nio.charset.StandardCharsets;
-import java.security.Key;
-import java.util.Arrays;
+import java.time.Instant;
 import java.util.Date;
-import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 
-import org.springframework.security.core.Authentication;
+import javax.crypto.SecretKey;
+
 import org.springframework.stereotype.Component;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
-import lombok.RequiredArgsConstructor;
 
 /**
- * Handles JWT token creation, validation, and parsing.
- * Tokens contain username and expiration, signed with HS256 algorithm.
+ * Creates and verifies HMAC-signed JWTs.
  */
 @Component
-@RequiredArgsConstructor
 public class JwtTokenProvider {
 
-    private final JwtProperties jwtProperties;
-
-    private Key getSigningKey() {
-        String secret = Objects.requireNonNull(jwtProperties.getSecret(), "JWT secret must not be null");
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-        if (keyBytes.length < 32) {
-            keyBytes = Arrays.copyOf(keyBytes, 32);
-        }
-        return Objects.requireNonNull(Keys.hmacShaKeyFor(keyBytes));
+    /** A freshly issued token and the moment it expires. */
+    public record IssuedToken(String value, Instant expiresAt) {
     }
 
+    private final SecretKey signingKey;
+    private final JwtProperties properties;
 
-    public String generateToken(Authentication authentication) {
-        String username = Objects.requireNonNull(authentication.getName(), "Authentication principal must have a username");
-        Date now = Objects.requireNonNull(new Date());
-        Date expiryDate = Objects.requireNonNull(new Date(now.getTime() + jwtProperties.getExpiration()));
-
-        return Objects.requireNonNull(Jwts.builder()
-                .setSubject(username)
-                .setIssuedAt(now)
-                .setExpiration(expiryDate)
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
-                .compact());
+    public JwtTokenProvider(JwtProperties properties) {
+        this.properties = properties;
+        // JwtProperties validation guarantees >= 32 characters, i.e. a key of at least 256 bits.
+        this.signingKey = Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
     }
 
-    public String getUsernameFromToken(String token) {
-        Claims claims = parseClaims(token);
-        return Objects.requireNonNull(claims.getSubject(), "JWT subject missing");
+    public IssuedToken generate(String username) {
+        Instant now = Instant.now();
+        Instant expiresAt = now.plus(properties.expiration());
+        String token = Jwts.builder()
+                .id(UUID.randomUUID().toString())
+                .subject(username)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiresAt))
+                .signWith(signingKey)
+                .compact();
+        return new IssuedToken(token, expiresAt);
     }
 
-    public Date getExpirationDate(String token) {
-        Claims claims = parseClaims(token);
-        return Objects.requireNonNull(claims.getExpiration(), "JWT expiration missing");
-    }
-
-    public boolean validateToken(String token) {
+    /** Returns the verified claims, or empty when the token is malformed, tampered with or expired. */
+    public Optional<Claims> parse(String token) {
         try {
-            parseClaims(token);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            return false;
+            return Optional.of(Jwts.parser()
+                    .verifyWith(signingKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload());
+        } catch (JwtException | IllegalArgumentException ex) {
+            return Optional.empty();
         }
-    }
-
-    private Claims parseClaims(String token) {
-        Claims claims = Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
-                .build()
-            .parseClaimsJws(token)
-            .getBody();
-        return Objects.requireNonNull(claims);
     }
 }

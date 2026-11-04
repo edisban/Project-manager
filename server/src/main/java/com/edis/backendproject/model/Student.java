@@ -2,11 +2,18 @@ package com.edis.backendproject.model;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -14,8 +21,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Student entity with many-to-one relationship to project.
- * CodeNumber must be unique. Includes custom JSON property for projectId.
+ * A student assigned to a project. The student code is unique within a project.
  */
 @Entity
 @Table(name = "students")
@@ -30,7 +36,7 @@ public class Student {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "code_number", unique = true, nullable = false, length = 20)
+    @Column(name = "code_number", nullable = false, length = 20)
     private String codeNumber;
 
     @Column(name = "first_name", nullable = false, length = 100)
@@ -48,28 +54,17 @@ public class Student {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "project_id", nullable = false)
-    @JsonBackReference
     private Project project;
 
-    // Custom JSON property to expose project ID
-    @JsonProperty("projectId")
-    public Long getProjectId() {
-        return project != null ? project.getId() : null;
-    }
-
-    // Custom JSON property to expose project name
-    @JsonProperty("projectName")
-    public String getProjectName() {
-        return project != null ? project.getName() : null;
-    }
-
     @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now(ZoneOffset.UTC);
+        }
     }
 }

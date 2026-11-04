@@ -1,75 +1,51 @@
 package com.edis.backendproject.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.Date;
-import java.util.Objects;
+import java.time.Instant;
+import java.util.HexFormat;
 
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import com.edis.backendproject.security.JwtTokenProvider;
 
-import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 /**
- * Stores revoked JWTs in Redis until they naturally expire so stateless logout works.
+ * Revokes JWTs (logout, account deletion) by storing a SHA-256 hash of the token in Redis until it expires.
+ * Raw tokens are never stored.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TokenBlacklistService {
 
-    private static final String KEY_PREFIX = "auth:blacklist:";
+    private static final String KEY_PREFIX = "auth:revoked:";
 
-    private final StringRedisTemplate stringRedisTemplate;
-    private final JwtTokenProvider jwtTokenProvider;
+    private final StringRedisTemplate redis;
+    private final JwtTokenProvider tokenProvider;
 
-    /**
-     * Adds the provided token to the blacklist for the remainder of its lifespan.
-     */
-    public void blacklistToken(String token) {
-        if (!StringUtils.hasText(token)) {
-            return;
-        }
+    public void revoke(String token) {
+        tokenProvider.parse(token).ifPresent(claims -> {
+            Duration remaining = Duration.between(Instant.now(), claims.getExpiration().toInstant());
+            if (!remaining.isNegative() && !remaining.isZero()) {
+                redis.opsForValue().set(key(token), "1", remaining);
+            }
+        });
+    }
 
-        long ttlMillis = getRemainingTtlMillis(token);
-        if (ttlMillis <= 0) {
-            return;
-        }
+    public boolean isRevoked(String token) {
+        return Boolean.TRUE.equals(redis.hasKey(key(token)));
+    }
 
+    private static String key(String token) {
         try {
-            stringRedisTemplate.opsForValue()
-                    .set(KEY_PREFIX + token, "1", ofMillis(ttlMillis));
-        } catch (DataAccessException ex) {
-            log.warn("Failed to store blacklisted token", ex);
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+            return KEY_PREFIX + HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 not available", ex);
         }
-    }
-
-    /**
-     * Checks whether the token was invalidated earlier.
-     */
-    public boolean isBlacklisted(String token) {
-        if (!StringUtils.hasText(token)) {
-            return false;
-        }
-        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(KEY_PREFIX + token));
-    }
-
-    private long getRemainingTtlMillis(String token) {
-        try {
-            Date expirationDate = jwtTokenProvider.getExpirationDate(token);
-            return expirationDate.getTime() - System.currentTimeMillis();
-        } catch (JwtException | IllegalArgumentException ex) {
-            log.debug("Skip blacklisting invalid token: {}", ex.getMessage());
-            return 0;
-        }
-    }
-
-    private static Duration ofMillis(long millis) {
-        return Objects.requireNonNull(Duration.ofMillis(millis));
     }
 }

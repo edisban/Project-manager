@@ -2,25 +2,28 @@ package com.edis.backendproject.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.Objects;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.edis.backendproject.dto.RegisterRequest;
+import com.edis.backendproject.exception.AppExceptions.ConflictException;
+import com.edis.backendproject.exception.AppExceptions.ForbiddenOperationException;
+import com.edis.backendproject.model.Role;
 import com.edis.backendproject.model.User;
 import com.edis.backendproject.repository.UserRepository;
+import com.edis.backendproject.security.AppUserPrincipal;
 
-import jakarta.persistence.EntityNotFoundException;
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
@@ -33,51 +36,44 @@ class UserServiceTest {
     @InjectMocks
     private UserService userService;
 
-    @SuppressWarnings("null")
     @Test
-    void registerUserPersistsHashedPassword() {
-        RegisterRequest request = new RegisterRequest("alice", "plaintextPass");
-        when(passwordEncoder.encode("plaintextPass")).thenReturn("hashed");
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        when(userRepository.save(userCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0, User.class));
+    void registerStoresHashedPasswordAndUserRole() {
+        when(userRepository.existsByUsernameIgnoreCase("alice")).thenReturn(false);
+        when(passwordEncoder.encode("supersecret")).thenReturn("hashed");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        User created = userService.registerUser(request);
-        User safeCreated = Objects.requireNonNull(created);
+        User user = userService.register(new RegisterRequest(" alice ", "supersecret"));
 
-        assertThat(safeCreated.getUsername()).isEqualTo("alice");
-        assertThat(safeCreated.getPassword()).isEqualTo("hashed");
-        verify(passwordEncoder).encode("plaintextPass");
-        verify(userRepository).save(userCaptor.getValue());
+        assertThat(user.getUsername()).isEqualTo("alice");
+        assertThat(user.getPassword()).isEqualTo("hashed");
+        assertThat(user.getRole()).isEqualTo(Role.USER);
     }
 
     @Test
-    void registerUserWhenUsernameExistsThrowsIllegalArgumentException() {
-        RegisterRequest request = new RegisterRequest("taken", "plaintextPass");
-        when(userRepository.existsByUsername("taken")).thenReturn(true);
+    void registerRejectsTakenUsername() {
+        when(userRepository.existsByUsernameIgnoreCase("alice")).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.registerUser(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Username is already taken");
+        assertThatThrownBy(() -> userService.register(new RegisterRequest("alice", "supersecret")))
+                .isInstanceOf(ConflictException.class);
+        verify(userRepository, never()).save(any());
     }
 
     @Test
-    void deleteUserByUsernameRemovesRecordWhenPresent() {
-        User existing = User.builder().id(42L).username("alice").password("hash").role("USER").build();
-        User safeExisting = Objects.requireNonNull(existing);
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(safeExisting));
+    void adminCannotDeleteOwnAccount() {
+        AppUserPrincipal admin = new AppUserPrincipal(1L, "admin", "x", Role.ADMIN);
 
-        userService.deleteUserByUsername("alice");
-
-        verify(userRepository).findByUsername("alice");
-        verify(userRepository).delete(safeExisting);
+        assertThatThrownBy(() -> userService.deleteOwnAccount(admin))
+                .isInstanceOf(ForbiddenOperationException.class);
+        verify(userRepository, never()).delete(any());
     }
 
     @Test
-    void deleteUserByUsernameThrowsWhenMissing() {
-        when(userRepository.findByUsername("missing")).thenReturn(Optional.empty());
+    void userCanDeleteOwnAccount() {
+        User user = User.builder().id(3L).username("bob").build();
+        when(userRepository.findById(3L)).thenReturn(Optional.of(user));
 
-        assertThatThrownBy(() -> userService.deleteUserByUsername("missing"))
-                .isInstanceOf(EntityNotFoundException.class)
-                .hasMessage("User not found");
+        userService.deleteOwnAccount(new AppUserPrincipal(3L, "bob", "x", Role.USER));
+
+        verify(userRepository).delete(user);
     }
 }

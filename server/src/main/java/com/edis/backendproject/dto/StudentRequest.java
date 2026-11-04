@@ -2,49 +2,43 @@ package com.edis.backendproject.dto;
 
 import java.time.LocalDate;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
-
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class StudentRequest {
+/**
+ * Names accept letters from any alphabet (e.g. Greek), spaces, apostrophes and hyphens.
+ */
+public record StudentRequest(
+        @NotBlank(message = "Student ID is required")
+        @Size(max = 20, message = "Student ID must be at most 20 characters")
+        @Pattern(regexp = "^[0-9]+$", message = "Student ID must contain only digits")
+        String codeNumber,
 
-    @JsonAlias({"am"})
-    @NotBlank(message = "codeNumber is required")
-    @Size(max = 20, message = "codeNumber must be at most 20 characters")
-    @Pattern(regexp = "^[0-9]+$", message = "Student ID must contain only numbers")
-    private String codeNumber;
+        @NotBlank(message = "First name is required")
+        @Size(max = 100, message = "First name must be at most 100 characters")
+        @Pattern(regexp = StudentRequest.NAME_PATTERN, message = "First name may only contain letters, spaces, ' and -")
+        String firstName,
 
-    @NotBlank(message = "firstName is required")
-    @Size(max = 100, message = "firstName must be at most 100 characters")
-    @Pattern(regexp = "^[A-Za-z\\s]+$", message = "First name must contain only letters")
-    private String firstName;
+        @NotBlank(message = "Last name is required")
+        @Size(max = 100, message = "Last name must be at most 100 characters")
+        @Pattern(regexp = StudentRequest.NAME_PATTERN, message = "Last name may only contain letters, spaces, ' and -")
+        String lastName,
 
-    @NotBlank(message = "lastName is required")
-    @Size(max = 100, message = "lastName must be at most 100 characters")
-    @Pattern(regexp = "^[A-Za-z\\s]+$", message = "Last name must contain only letters")
-    private String lastName;
+        @Past(message = "Date of birth must be in the past")
+        LocalDate dateOfBirth,
 
-    @Past(message = "dateOfBirth must be in the past")
-    private LocalDate dateOfBirth;
+        @NotBlank(message = "Role is required")
+        @Size(max = 200, message = "Role must be at most 200 characters")
+        String title,
 
-    @NotBlank(message = "title is required")
-    @Size(max = 200, message = "title must be at most 200 characters")
-    @Pattern(regexp = "^[A-Za-z\\s]+$", message = "Job title must contain only letters")
-    private String title;
+        @Size(max = 1000, message = "Notes must be at most 1000 characters")
+        String description,
 
-    @Size(max = 1000, message = "description must be at most 1000 characters")
-    private String description;
+        @NotNull(message = "Project is required")
+        Long projectId) {
 
-    @NotNull(message = "projectId is required")
-    private Long projectId;
+    public static final String NAME_PATTERN = "^[\\p{L}][\\p{L} '\\-]*$";
 }

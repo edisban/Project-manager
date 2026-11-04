@@ -1,26 +1,21 @@
 package com.edis.backendproject.controller;
 
-import java.util.Objects;
-
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.edis.backendproject.dto.ApiResponse;
-import com.edis.backendproject.security.BearerTokenExtractor;
+import com.edis.backendproject.security.AppUserPrincipal;
+import com.edis.backendproject.security.AuthCookieService;
 import com.edis.backendproject.service.TokenBlacklistService;
 import com.edis.backendproject.service.UserService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Authenticated user-facing endpoints (profile management, etc.).
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/users")
@@ -29,17 +24,17 @@ public class UserController {
 
     private final UserService userService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final AuthCookieService authCookieService;
 
-    @SuppressWarnings("null")
+    /** Deletes the caller's account (and their projects), revokes the token and clears the cookie. */
     @DeleteMapping("/me")
-    public ResponseEntity<ApiResponse<Void>> deleteCurrentUser(
-            Authentication authentication,
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader) {
-        String username = Objects.requireNonNull(authentication, "Authentication must not be null").getName();
-        userService.deleteUserByUsername(username);
-        BearerTokenExtractor.extract(authorizationHeader)
-                .ifPresent(tokenBlacklistService::blacklistToken);
-        log.info("User {} deleted their account", username);
-        return ResponseEntity.ok(ApiResponse.success("Your account was deleted successfully.", null));
+    public ResponseEntity<Void> deleteOwnAccount(@AuthenticationPrincipal AppUserPrincipal user,
+                                                 HttpServletRequest request) {
+        userService.deleteOwnAccount(user);
+        authCookieService.read(request).ifPresent(tokenBlacklistService::revoke);
+        log.info("User '{}' deleted their account", user.getUsername());
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, authCookieService.clear().toString())
+                .build();
     }
 }

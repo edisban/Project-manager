@@ -1,95 +1,93 @@
 package com.edis.backendproject.service;
 
-import com.edis.backendproject.config.CacheNames;
-import com.edis.backendproject.dto.ProjectRequest;
-import com.edis.backendproject.model.Project;
-import com.edis.backendproject.repository.ProjectRepository;
-
-import jakarta.persistence.EntityNotFoundException;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.lang.Nullable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Objects;
+import com.edis.backendproject.dto.PageResponse;
+import com.edis.backendproject.dto.ProjectRequest;
+import com.edis.backendproject.dto.ProjectResponse;
+import com.edis.backendproject.exception.AppExceptions.ConflictException;
+import com.edis.backendproject.exception.AppExceptions.ResourceNotFoundException;
+import com.edis.backendproject.model.Project;
+import com.edis.backendproject.repository.ProjectRepository;
+import com.edis.backendproject.repository.UserRepository;
+import com.edis.backendproject.security.AppUserPrincipal;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * Handles project CRUD operations with validation.
- * Checks for duplicate names, manages transactions.
+ * Project use cases. Users only see and change their own projects; admins see and change all of them.
+ * Projects the caller may not access are reported as "not found" so their existence is not revealed.
  */
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
-public class ProjectService implements IProjectService {
+public class ProjectService {
+
+    private static final String DUPLICATE_NAME = "You already have a project with this name";
 
     private final ProjectRepository projectRepository;
+    private final UserRepository userRepository;
 
-    @Override
-    @Cacheable(cacheNames = CacheNames.PROJECTS)
-    public List<Project> getAllProjects() {
-        return projectRepository.findAll();
+    public PageResponse<ProjectResponse> list(AppUserPrincipal user, String query, Pageable pageable) {
+        String pattern = SearchPatterns.contains(query);
+        Page<Project> page = user.isAdmin()
+                ? projectRepository.search(pattern, pageable)
+                : projectRepository.searchByOwner(user.getId(), pattern, pageable);
+        return PageResponse.from(page, ProjectResponse::from);
     }
 
-    public Project getProjectById(Long id) {
-        return loadProject(id);
-    }
-
-    @Transactional
-    @CacheEvict(cacheNames = CacheNames.PROJECTS, allEntries = true)
-    public Project createProject(ProjectRequest request) {
-        String name = requireName(request);
-        ensureUniqueName(name, null);
-
-        Project project = applyRequest(new Project(), request);
-        return projectRepository.save(project);
+    public ProjectResponse get(Long id, AppUserPrincipal user) {
+        return ProjectResponse.from(requireAccessible(id, user));
     }
 
     @Transactional
-    @CacheEvict(cacheNames = CacheNames.PROJECTS, allEntries = true)
-    public Project updateProject(Long id, ProjectRequest request) {
-        final Project project = loadProject(id);
-        String name = requireName(request);
-        if (!Objects.equals(project.getName(), name)) {
-            ensureUniqueName(name, id);
+    public ProjectResponse create(ProjectRequest request, AppUserPrincipal user) {
+        String name = request.name().trim();
+        if (projectRepository.existsByOwnerIdAndNameIgnoreCase(user.getId(), name)) {
+            throw new ConflictException(DUPLICATE_NAME);
         }
-
-        Project updated = applyRequest(project, request);
-        return projectRepository.save(updated);
+        Project project = Project.builder()
+                .name(name)
+                .description(normalize(request.description()))
+                .owner(userRepository.getReferenceById(user.getId()))
+                .build();
+        return ProjectResponse.from(projectRepository.saveAndFlush(project));
     }
 
     @Transactional
-    @CacheEvict(cacheNames = CacheNames.PROJECTS, allEntries = true)
-    public void deleteProject(Long id) {
-        final Project project = loadProject(id);
-        projectRepository.delete(project);
+    public ProjectResponse update(Long id, ProjectRequest request, AppUserPrincipal user) {
+        Project project = requireAccessible(id, user);
+        String name = request.name().trim();
+        Long ownerId = project.getOwner() != null ? project.getOwner().getId() : null;
+        if (ownerId != null && projectRepository.existsByOwnerIdAndNameIgnoreCaseAndIdNot(ownerId, name, id)) {
+            throw new ConflictException(DUPLICATE_NAME);
+        }
+        project.setName(name);
+        project.setDescription(normalize(request.description()));
+        return ProjectResponse.from(projectRepository.saveAndFlush(project));
     }
 
-    private Project loadProject(Long id) {
-        Project project = projectRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Project not found"));
-        return Objects.requireNonNull(project);
+    @Transactional
+    public void delete(Long id, AppUserPrincipal user) {
+        projectRepository.delete(requireAccessible(id, user));
     }
 
-    private void ensureUniqueName(String name, @Nullable Long projectIdToIgnore) {
-        projectRepository.findByName(name).ifPresent(existing -> {
-            boolean isDifferentEntity = projectIdToIgnore == null || !Objects.equals(existing.getId(), projectIdToIgnore);
-            if (isDifferentEntity) {
-                throw new IllegalArgumentException("Project with this name already exists");
-            }
-        });
-    }
-
-    private Project applyRequest(Project project, ProjectRequest request) {
-        project.setName(requireName(request));
-        project.setDescription(request.getDescription());
+    /**
+     * Loads a project the caller may access, or throws {@link ResourceNotFoundException}.
+     */
+    public Project requireAccessible(Long id, AppUserPrincipal user) {
+        Project project = projectRepository.findWithOwnerById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        if (!user.isAdmin() && !project.isOwnedBy(user.getId())) {
+            throw new ResourceNotFoundException("Project not found");
+        }
         return project;
     }
 
-    private String requireName(ProjectRequest request) {
-        return Objects.requireNonNull(request.getName(), "Project name must not be null");
+    private static String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

@@ -1,6 +1,13 @@
 package com.edis.backendproject.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -8,8 +15,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * User entity for authentication. Username is unique.
- * Default admin user is auto-created on first startup.
+ * Application user. Passwords are stored as BCrypt hashes.
  */
 @Entity
 @Table(name = "users")
@@ -24,21 +30,14 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false, length = 50)
+    @Column(nullable = false, unique = true, length = 50)
     private String username;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false)
     private String password;
 
     @Builder.Default
-    @Column(length = 20)
-    private String role = "USER";
-
-    @PrePersist
-    @PreUpdate
-    public void ensureRole() {
-        if (role == null || role.isBlank()) {
-            role = "USER";
-        }
-    }
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role = Role.USER;
 }

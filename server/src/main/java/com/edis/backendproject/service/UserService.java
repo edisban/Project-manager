@@ -1,21 +1,20 @@
 package com.edis.backendproject.service;
 
-import java.util.Objects;
-
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.edis.backendproject.dto.RegisterRequest;
+import com.edis.backendproject.exception.AppExceptions.ConflictException;
+import com.edis.backendproject.exception.AppExceptions.ForbiddenOperationException;
+import com.edis.backendproject.exception.AppExceptions.ResourceNotFoundException;
+import com.edis.backendproject.model.Role;
 import com.edis.backendproject.model.User;
 import com.edis.backendproject.repository.UserRepository;
+import com.edis.backendproject.security.AppUserPrincipal;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 
-/**
- * Handles user lifecycle operations such as self-registration.
- */
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -24,53 +23,35 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
 
     /**
-     * Registers a new end-user with a BCrypt-hashed password.
+     * Registers a new {@link Role#USER}. Usernames are unique case-insensitively.
      *
-     * @throws IllegalArgumentException when the username is already taken.
+     * @throws ConflictException when the username is already taken
      */
-    @SuppressWarnings("null")
     @Transactional
-    public User registerUser(RegisterRequest request) {
-        Objects.requireNonNull(request, "Register request must not be null");
-
-        String normalizedUsername = normalizeUsername(request.getUsername());
-        if (userRepository.existsByUsername(normalizedUsername)) {
-            throw new IllegalArgumentException("Username is already taken");
+    public User register(RegisterRequest request) {
+        String username = request.username().trim();
+        if (userRepository.existsByUsernameIgnoreCase(username)) {
+            throw new ConflictException("This username is already taken");
         }
-
-        String rawPassword = Objects.requireNonNull(request.getPassword(), "Password is required");
-        String hashedPassword = passwordEncoder.encode(rawPassword);
-
         User user = User.builder()
-                .username(normalizedUsername)
-                .password(hashedPassword)
-                .role("USER")
+                .username(username)
+                .password(passwordEncoder.encode(request.password()))
+                .role(Role.USER)
                 .build();
-
-        User savedUser = userRepository.save(user);
-        return Objects.requireNonNull(savedUser);
+        return userRepository.save(user);
     }
 
     /**
-     * Removes the user identified by the provided username.
-     *
-     * @throws EntityNotFoundException when the username does not exist.
+     * Deletes the caller's account together with their projects and students (database cascade).
+     * The administrator account cannot delete itself.
      */
-    @SuppressWarnings("null")
     @Transactional
-    public void deleteUserByUsername(String username) {
-        String normalizedUsername = normalizeUsername(username);
-
-        User existing = userRepository.findByUsername(normalizedUsername)
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
-        userRepository.delete(existing);
-    }
-
-    private String normalizeUsername(String username) {
-        String normalized = Objects.requireNonNull(username, "Username is required").trim();
-        if (normalized.isEmpty()) {
-            throw new IllegalArgumentException("Username is required");
+    public void deleteOwnAccount(AppUserPrincipal currentUser) {
+        if (currentUser.isAdmin()) {
+            throw new ForbiddenOperationException("The administrator account can't be deleted");
         }
-        return normalized;
+        User user = userRepository.findById(currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        userRepository.delete(user);
     }
 }

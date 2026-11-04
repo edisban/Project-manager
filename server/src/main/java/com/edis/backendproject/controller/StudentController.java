@@ -1,98 +1,61 @@
 package com.edis.backendproject.controller;
 
+import java.net.URI;
+
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.edis.backendproject.dto.ApiResponse;
 import com.edis.backendproject.dto.StudentRequest;
-import com.edis.backendproject.model.Student;
-import com.edis.backendproject.service.IStudentService;
+import com.edis.backendproject.dto.StudentResponse;
+import com.edis.backendproject.security.AppUserPrincipal;
+import com.edis.backendproject.service.StudentService;
 
 import jakarta.validation.Valid;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Objects;
-
 import lombok.RequiredArgsConstructor;
 
 /**
- * REST controller for student operations.
- * Supports CRUD, search by code/name, and filtering by project.
+ * Single-student operations. Listing and searching live under {@code /api/projects/{id}/students}.
  */
 @RestController
 @RequestMapping("/api/students")
 @RequiredArgsConstructor
 public class StudentController {
 
-    private final IStudentService studentService;
+    private final StudentService studentService;
 
-    
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<Student>>> getAllStudents(
-            @RequestParam(name = "projectId", required = false) Long projectId) {
-        if (projectId != null) {
-            List<Student> students = studentService.getStudentsByProject(projectId);
-            return ResponseEntity.ok(ApiResponse.success(students));
-        }
-        @SuppressWarnings("unused")
-        List<Student> students = studentService.getAllStudents();
-        return ResponseEntity.ok(ApiResponse.success(students));
-    }
-
-    @SuppressWarnings({ "unused", "null" })
-    @GetMapping("/search")
-    public ResponseEntity<ApiResponse<List<Student>>> searchStudents(
-            @RequestParam String query,
-            @RequestParam(name = "projectId", required = false) Long projectId) {
-        String safeQuery = Objects.requireNonNull(query, "query parameter is required");
-        List<Student> students;
-        if (projectId != null) {
-            students = studentService.searchByNameAndProject(safeQuery, projectId);
-        } else {
-            students = studentService.searchByName(safeQuery);
-        }
-        return ResponseEntity.ok(ApiResponse.success(students));
-    }
-
-    
-    @GetMapping("/search/code")
-    public ResponseEntity<ApiResponse<Student>> searchByCode(@RequestParam String code) {
-        Student student = studentService.searchByCode(code);
-        return ResponseEntity.ok(ApiResponse.success(student));
-    }
-
-    
-    @GetMapping("/project/{projectId}")
-    public ResponseEntity<ApiResponse<List<Student>>> getStudentsByProject(@PathVariable Long projectId) {
-        List<Student> students = studentService.getStudentsByProject(projectId);
-        return ResponseEntity.ok(ApiResponse.success(students));
-    }
-
-    
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Student>> getStudentById(@PathVariable Long id) {
-        Student student = studentService.getStudentById(id);
-        return ResponseEntity.ok(ApiResponse.success(student));
+    public ApiResponse<StudentResponse> get(@PathVariable Long id, @AuthenticationPrincipal AppUserPrincipal user) {
+        return ApiResponse.success(studentService.get(id, user));
     }
 
-    
-    @PostMapping
-    public ResponseEntity<ApiResponse<Student>> createStudent(@Valid @RequestBody StudentRequest request) {
-        Student created = studentService.createStudent(request);
-        return ResponseEntity.ok(ApiResponse.success("Student created successfully", created));
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ApiResponse<StudentResponse>> create(@Valid @RequestBody StudentRequest request,
+                                                               @AuthenticationPrincipal AppUserPrincipal user) {
+        StudentResponse created = studentService.create(request, user);
+        return ResponseEntity.created(URI.create("/api/students/" + created.id()))
+                .body(ApiResponse.success("Student added", created));
     }
 
-    
-    @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<Student>> updateStudent(@PathVariable Long id,
-                                        @Valid @RequestBody StudentRequest request) {
-        Student updated = studentService.updateStudent(id, request);
-        return ResponseEntity.ok(ApiResponse.success("Student updated successfully", updated));
+    @PutMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ApiResponse<StudentResponse> update(@PathVariable Long id,
+                                               @Valid @RequestBody StudentRequest request,
+                                               @AuthenticationPrincipal AppUserPrincipal user) {
+        return ApiResponse.success("Student updated", studentService.update(id, request, user));
     }
 
-    
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteStudent(@PathVariable Long id) {
-        studentService.deleteStudent(id);
-        return ResponseEntity.ok(ApiResponse.success("Student deleted successfully", null));
+    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal AppUserPrincipal user) {
+        studentService.delete(id, user);
+        return ResponseEntity.noContent().build();
     }
 }

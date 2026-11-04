@@ -1,11 +1,20 @@
 package com.edis.backendproject.model;
 
 import java.time.LocalDateTime;
-import java.util.List;
+import java.time.ZoneOffset;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.hibernate.annotations.Formula;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,8 +22,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Project entity with one-to-many relationship to students.
- * Name must be unique. CreatedAt timestamp set automatically on creation.
+ * A project owned by a user. Project names are unique per owner.
+ * Students are removed by the database ({@code ON DELETE CASCADE}) when a project is deleted.
  */
 @Entity
 @Table(name = "projects")
@@ -24,26 +33,37 @@ import lombok.Setter;
 @AllArgsConstructor
 @Builder
 public class Project {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false, length = 100)
+    @Column(nullable = false, length = 100)
     private String name;
 
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonIgnore
-    private List<Student> students;
+    /** Owner of the project; {@code null} for projects created before ownership existed; only admins can see those. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private User owner;
 
-    @PrePersist  // Auto-set timestamp before insert
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
+    /** Read-only, computed by the database on load. */
+    @Formula("(select count(*) from students s where s.project_id = id)")
+    private long studentCount;
+
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now(ZoneOffset.UTC);
+        }
+    }
+
+    public boolean isOwnedBy(Long userId) {
+        return owner != null && owner.getId() != null && owner.getId().equals(userId);
     }
 }

@@ -1,116 +1,101 @@
 package com.edis.backendproject.service;
 
-import com.edis.backendproject.config.CacheNames;
-import com.edis.backendproject.dto.StudentRequest;
-import com.edis.backendproject.model.Project;
-import com.edis.backendproject.model.Student;
-import com.edis.backendproject.repository.ProjectRepository;
-import com.edis.backendproject.repository.StudentRepository;
+import java.util.Objects;
 
-import jakarta.persistence.EntityNotFoundException;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Objects;
+import com.edis.backendproject.dto.PageResponse;
+import com.edis.backendproject.dto.StudentRequest;
+import com.edis.backendproject.dto.StudentResponse;
+import com.edis.backendproject.exception.AppExceptions.ConflictException;
+import com.edis.backendproject.exception.AppExceptions.ResourceNotFoundException;
+import com.edis.backendproject.model.Project;
+import com.edis.backendproject.model.Student;
+import com.edis.backendproject.repository.StudentRepository;
+import com.edis.backendproject.security.AppUserPrincipal;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * Handles student CRUD operations and search functionality.
- * Supports search by code number and name with various endpoints.
+ * Student use cases. Access to a student is granted through access to its project.
  */
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
-public class StudentService implements IStudentService {
+public class StudentService {
+
+    private static final String DUPLICATE_CODE = "A student with this ID already exists in the project";
 
     private final StudentRepository studentRepository;
-    private final ProjectRepository projectRepository;
+    private final ProjectService projectService;
 
-    @Override
-    @Cacheable(cacheNames = CacheNames.STUDENTS)
-    public List<Student> getAllStudents() {
-        return studentRepository.findAll();
+    public PageResponse<StudentResponse> listByProject(Long projectId, AppUserPrincipal user,
+                                                       String query, Pageable pageable) {
+        Project project = projectService.requireAccessible(projectId, user);
+        return PageResponse.from(
+                studentRepository.searchInProject(project.getId(), SearchPatterns.contains(query), pageable),
+                StudentResponse::from);
     }
 
-    public Student getStudentById(Long id) {
-        return loadStudent(id);
+    public StudentResponse get(Long id, AppUserPrincipal user) {
+        return StudentResponse.from(requireAccessible(id, user));
     }
 
-    public List<Student> getStudentsByProject(Long projectId) {
-        List<Student> students = studentRepository.findByProject_Id(projectId);
-        return Objects.requireNonNull(students);
-    }
-
-    public Student searchByCode(String code) {
-        if (code == null || code.trim().isEmpty()) {
-            throw new IllegalArgumentException("Code cannot be empty");
+    @Transactional
+    public StudentResponse create(StudentRequest request, AppUserPrincipal user) {
+        Project project = projectService.requireAccessible(request.projectId(), user);
+        String code = request.codeNumber().trim();
+        if (studentRepository.existsByProjectIdAndCodeNumber(project.getId(), code)) {
+            throw new ConflictException(DUPLICATE_CODE);
         }
-        Student student = studentRepository.findByCodeNumber(code)
-                .orElseThrow(() -> new EntityNotFoundException("Student not found"));
-        return Objects.requireNonNull(student);
-    }
-
-    public List<Student> searchByName(String name) {
-        List<Student> students = studentRepository.searchByName(name);
-        return Objects.requireNonNull(students);
-    }
-
-    public List<Student> searchByNameAndProject(String name, Long projectId) {
-        List<Student> allResults = studentRepository.searchByName(name);
-        List<Student> filtered = allResults.stream()
-            .filter(student -> student.getProject() != null && student.getProject().getId().equals(projectId))
-            .toList();
-        return Objects.requireNonNull(filtered);
-    }
-
-    @Transactional
-    @CacheEvict(cacheNames = CacheNames.STUDENTS, allEntries = true)
-    public Student createStudent(StudentRequest request) {
-        final Project project = loadProject(Objects.requireNonNull(request.getProjectId(), "Project ID is required"));
-
-        Student student = applyRequest(new Student(), request);
+        Student student = new Student();
+        apply(student, request);
         student.setProject(project);
-        return studentRepository.save(student);
+        return StudentResponse.from(studentRepository.saveAndFlush(student));
+    }
+
+    /**
+     * Updates a student, including moving them to another project the caller can access.
+     */
+    @Transactional
+    public StudentResponse update(Long id, StudentRequest request, AppUserPrincipal user) {
+        Student student = requireAccessible(id, user);
+        Project target = Objects.equals(student.getProject().getId(), request.projectId())
+                ? student.getProject()
+                : projectService.requireAccessible(request.projectId(), user);
+
+        String code = request.codeNumber().trim();
+        if (studentRepository.existsByProjectIdAndCodeNumberAndIdNot(target.getId(), code, id)) {
+            throw new ConflictException(DUPLICATE_CODE);
+        }
+        apply(student, request);
+        student.setProject(target);
+        return StudentResponse.from(studentRepository.saveAndFlush(student));
     }
 
     @Transactional
-    @CacheEvict(cacheNames = CacheNames.STUDENTS, allEntries = true)
-    public Student updateStudent(Long id, StudentRequest request) {
-        final Student student = loadStudent(id);
-        Student updated = applyRequest(student, request);
-        return studentRepository.save(updated);
+    public void delete(Long id, AppUserPrincipal user) {
+        studentRepository.delete(requireAccessible(id, user));
     }
 
-    @Transactional
-    @CacheEvict(cacheNames = CacheNames.STUDENTS, allEntries = true)
-    public void deleteStudent(Long id) {
-        final Student student = loadStudent(id);
-        studentRepository.delete(student);
+    private Student requireAccessible(Long id, AppUserPrincipal user) {
+        Student student = studentRepository.findWithProjectById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        if (!user.isAdmin() && !student.getProject().isOwnedBy(user.getId())) {
+            throw new ResourceNotFoundException("Student not found");
+        }
+        return student;
     }
 
-    private Student loadStudent(Long id) {
-        Student student = studentRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Student not found"));
-        return Objects.requireNonNull(student);
-    }
-
-    private Project loadProject(Long id) {
-        Project project = projectRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Project not found"));
-        return Objects.requireNonNull(project);
-    }
-
-    private Student applyRequest(Student target, StudentRequest request) {
-        target.setCodeNumber(request.getCodeNumber());
-        target.setFirstName(request.getFirstName());
-        target.setLastName(request.getLastName());
-        target.setDateOfBirth(request.getDateOfBirth());
-        target.setTitle(request.getTitle());
-        target.setDescription(request.getDescription());
-        return target;
+    private static void apply(Student student, StudentRequest request) {
+        student.setCodeNumber(request.codeNumber().trim());
+        student.setFirstName(request.firstName().trim());
+        student.setLastName(request.lastName().trim());
+        student.setDateOfBirth(request.dateOfBirth());
+        student.setTitle(request.title().trim());
+        student.setDescription(request.description() == null || request.description().isBlank()
+                ? null : request.description().trim());
     }
 }

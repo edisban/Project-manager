@@ -1,8 +1,11 @@
 .git
 .gitignore
+.gitattributes
 .mvn
 .vscode
 .idea
 mvnw
 mvnw.cmd
+target
 **/target
+*.md

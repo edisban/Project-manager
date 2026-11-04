@@ -1,21 +1,19 @@
-/**
- * Application entry point - renders root component with providers.
- * Wraps app with ThemeProvider (Material-UI) and AuthProvider (JWT context).
- */
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App";
-import "./index.css";
-import { AuthProvider } from "@/context/AuthContext";
-import { ThemeProvider } from "@mui/material/styles";
-import theme from "@/theme";
+import "@fontsource-variable/inter";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { createBrowserRouter } from "react-router";
+import { RouterProvider } from "react-router/dom";
+import { AppProviders } from "./AppProviders";
+import { IntroSplash } from "./components/IntroSplash";
+import { routes } from "./router";
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </ThemeProvider>
-  </React.StrictMode>
+const router = createBrowserRouter(routes);
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <AppProviders>
+      <RouterProvider router={router} />
+      <IntroSplash />
+    </AppProviders>
+  </StrictMode>,
 );
