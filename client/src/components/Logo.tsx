@@ -1,5 +1,6 @@
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import { Link as RouterLink } from "react-router";
 
 interface LogoProps {
   /** Hide the word mark (icon only). */
@@ -44,5 +45,21 @@ export const Logo = ({ compact = false, inverted = false }: LogoProps) => (
         Project Manager
       </Typography>
     )}
+  </Box>
+);
+
+/**
+ * The logo as a link to the main page: the landing page for guests, the overview for signed-in
+ * users (see HomeRoute). Scrolls back up too, because a link to the current page would not.
+ */
+export const LogoLink = ({ inverted = false }: Pick<LogoProps, "inverted">) => (
+  <Box
+    component={RouterLink}
+    to="/"
+    aria-label="Project Manager home"
+    onClick={() => window.scrollTo({ top: 0 })}
+    sx={{ display: "inline-flex", textDecoration: "none", borderRadius: 1 }}
+  >
+    <Logo inverted={inverted} />
   </Box>
 );

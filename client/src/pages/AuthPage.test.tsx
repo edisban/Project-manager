@@ -78,4 +78,18 @@ describe("Authentication", () => {
       expect(screen.getByText("Welcome, newbie! Your account is ready.")).toBeInTheDocument(),
     );
   });
+
+  it("returns to the main page from the logo", async () => {
+    window.scrollTo = () => {};
+    const { user, router } = renderApp("/login");
+
+    // Desktop and mobile logos are both in the DOM; CSS shows one at a time.
+    const [logo] = await screen.findAllByRole("link", { name: "Project Manager home" });
+    await user.click(logo);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /organise projects/i }),
+    ).toBeInTheDocument();
+  });
 });

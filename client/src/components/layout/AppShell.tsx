@@ -8,7 +8,7 @@ import Typography from "@mui/material/Typography";
 import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router";
 import { FullPageLoader } from "@/components/FullPageLoader";
-import { Logo } from "@/components/Logo";
+import { LogoLink } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { TourProvider } from "@/features/tour/TourProvider";
 import { UserMenu } from "./UserMenu";
@@ -56,13 +56,8 @@ export const AppShell = () => (
       >
         <Container maxWidth="lg">
           <Toolbar disableGutters sx={{ gap: 1, minHeight: { xs: 60 } }}>
-            <Box
-              component={NavLink}
-              to="/dashboard"
-              aria-label="Project Manager home"
-              sx={{ textDecoration: "none", mr: { xs: 1, sm: 3 } }}
-            >
-              <Logo />
+            <Box sx={{ mr: { xs: 1, sm: 3 } }}>
+              <LogoLink />
             </Box>
             {NAV_ITEMS.map((item) => (
               <Button

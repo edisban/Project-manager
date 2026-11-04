@@ -17,7 +17,7 @@ import { useForm } from "react-hook-form";
 import { Link as RouterLink, useLocation } from "react-router";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/useAuth";
-import { Logo } from "@/components/Logo";
+import { LogoLink } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useToast } from "@/components/feedback/toast-context";
 import { applyServerErrors } from "@/utils/forms";
@@ -103,7 +103,7 @@ const BrandPanel = () => (
       "& > *": { position: "relative", zIndex: 1 },
     }}
   >
-    <Logo inverted />
+    <LogoLink inverted />
     <Box sx={{ maxWidth: 460 }}>
       <Typography variant="h3" component="p" sx={{ fontSize: "2.5rem", lineHeight: 1.15, mb: 2 }}>
         Every project and every student, in one place.
@@ -197,7 +197,7 @@ export const AuthPage = ({ mode }: { mode: Mode }) => {
       <Box sx={{ display: "flex", flexDirection: "column", p: { xs: 2.5, sm: 4 } }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Box sx={{ display: { md: "none" } }}>
-            <Logo />
+            <LogoLink />
           </Box>
           <Box sx={{ ml: "auto" }}>
             <ThemeToggle />

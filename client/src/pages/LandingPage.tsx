@@ -20,7 +20,7 @@ import { keyframes } from "@mui/material/styles";
 import { useEffect, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
-import { Logo } from "@/components/Logo";
+import { Logo, LogoLink } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CHART_FILL } from "@/features/dashboard/ActivityChart";
 
@@ -186,7 +186,7 @@ const LandingPage = () => {
       >
         <Container maxWidth="lg">
           <Toolbar disableGutters sx={{ gap: { xs: 0.5, sm: 1 } }}>
-            <Logo />
+            <LogoLink />
             <Box sx={{ flexGrow: 1 }} />
             <Button
               href="#features"
