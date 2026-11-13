@@ -56,7 +56,6 @@ services:
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?Set APP_ADMIN_PASSWORD in .env}
-      FLYWAY_REPAIR_ON_START: ${FLYWAY_REPAIR_ON_START:-false}
     depends_on:
       db:
         condition: service_healthy

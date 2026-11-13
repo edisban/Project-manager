@@ -20,7 +20,7 @@ public record ProjectResponse(
                 project.getDescription(),
                 toInstant(project.getCreatedAt()),
                 project.getStudentCount(),
-                project.getOwner() != null ? project.getOwner().getUsername() : null);
+                project.getOwner().getUsername());
     }
 
     /** Entities store UTC wall-clock time; the API exposes unambiguous instants. */

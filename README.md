@@ -63,19 +63,6 @@ publishes them on `127.0.0.1` (ports from `.env`):
 docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 ```
 
-### Upgrading an existing database
-
-Older versions of this repository applied migrations that were later edited or deleted. If the
-backend fails at start-up with a Flyway validation error, start it once with
-`FLYWAY_REPAIR_ON_START=true` (repairs the history table only, never data), then remove the variable:
-
-```bash
-FLYWAY_REPAIR_ON_START=true docker compose up -d --wait backend
-docker compose up -d --wait backend
-```
-
-Projects created before ownership existed have no owner and are visible to the administrator only.
-
 ## Development
 
 | Task | Command |

@@ -265,7 +265,7 @@ const ProjectPage = () => {
                   </Meta>
                   {isAdmin && (
                     <Meta icon={<PersonOutlineRounded sx={{ fontSize: 18 }} />}>
-                      {data.ownerUsername ? `Owned by ${data.ownerUsername}` : "No owner"}
+                      Owned by {data.ownerUsername}
                     </Meta>
                   )}
                 </Stack>

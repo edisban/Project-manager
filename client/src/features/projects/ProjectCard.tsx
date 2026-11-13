@@ -113,7 +113,7 @@ export const ProjectCard = ({ project, showOwner, onEdit, onDelete }: ProjectCar
               size="small"
               variant="outlined"
               icon={<PersonOutlineRounded />}
-              label={project.ownerUsername ?? "Unassigned"}
+              label={project.ownerUsername}
             />
           )}
         </Stack>

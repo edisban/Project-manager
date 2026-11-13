@@ -27,7 +27,7 @@ export interface Project {
   /** UTC instant, e.g. 2026-01-27T13:59:43.721709Z */
   createdAt: string;
   studentCount: number;
-  ownerUsername: string | null;
+  ownerUsername: string;
 }
 
 export interface ProjectInput {
