@@ -19,7 +19,6 @@ import Typography from "@mui/material/Typography";
 import { keyframes } from "@mui/material/styles";
 import { useEffect, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router";
-import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { Logo, LogoLink } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CHART_FILL } from "@/features/dashboard/ActivityChart";
@@ -137,28 +136,62 @@ const ProductPreview = () => {
           </Stack>
         </Card>
         <Card>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            component="div"
+            sx={{ px: 1.5, pt: 1.25, pb: 0.5 }}
+          >
+            Largest projects
+          </Typography>
           {[
-            ["Ada Lovelace", "Tech lead", "Website redesign"],
-            ["Γιώργος Παπαδόπουλος", "Frontend engineer", "Website redesign"],
-            ["Grace Hopper", "Platform engineer", "Data platform"],
-          ].map(([name, role, project], index) => (
+            ["Website redesign", 34],
+            ["Data platform", 27],
+            ["Mobile app", 19],
+          ].map(([project, count], index) => (
             <Stack
-              key={name}
+              key={project}
               direction="row"
               spacing={1.25}
               alignItems="center"
               sx={{ px: 1.5, py: 1, borderTop: index > 0 ? 1 : 0, borderColor: "divider" }}
             >
-              <InitialsAvatar name={name} size={28} />
+              <Box
+                sx={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 1.5,
+                  display: "grid",
+                  placeItems: "center",
+                  color: CHART_FILL,
+                  bgcolor: "action.hover",
+                  flexShrink: 0,
+                }}
+              >
+                <FolderCopyOutlined sx={{ fontSize: 16 }} />
+              </Box>
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography variant="body2" fontWeight={600} noWrap sx={{ fontSize: "0.8rem" }}>
-                  {name}
+                  {project}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" noWrap component="div">
-                  {role}
-                </Typography>
+                <Box sx={{ mt: 0.5, height: 4, borderRadius: 2, bgcolor: "action.hover" }}>
+                  <Box
+                    sx={{
+                      width: `${(Number(count) / 34) * 100}%`,
+                      height: "100%",
+                      borderRadius: 2,
+                      bgcolor: CHART_FILL,
+                    }}
+                  />
+                </Box>
               </Box>
-              <Chip size="small" label={project} sx={{ display: { xs: "none", sm: "flex" } }} />
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}
+              >
+                {count} students
+              </Typography>
             </Stack>
           ))}
         </Card>
