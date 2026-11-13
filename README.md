@@ -34,7 +34,7 @@ The SPA and the API are served from **one origin**, which is what allows the aut
 
 ## Security model
 
-- Passwords hashed with BCrypt; the API never returns the JWT in a response body.
+- Passwords hashed with Argon2id; the API never returns the JWT in a response body.
 - The JWT travels in an **HttpOnly, SameSite=Strict** cookie (`Secure` when `AUTH_COOKIE_SECURE=true`),
   so JavaScript cannot read it.
 - **CSRF** protection with the double-submit cookie pattern (`XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header).
@@ -62,19 +62,6 @@ publishes them on `127.0.0.1` (ports from `.env`):
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 ```
-
-### Upgrading an existing database
-
-Older versions of this repository applied migrations that were later edited or deleted. If the
-backend fails at start-up with a Flyway validation error, start it once with
-`FLYWAY_REPAIR_ON_START=true` (repairs the history table only, never data), then remove the variable:
-
-```bash
-FLYWAY_REPAIR_ON_START=true docker compose up -d --wait backend
-docker compose up -d --wait backend
-```
-
-Projects created before ownership existed have no owner and are visible to the administrator only.
 
 ## Development
 

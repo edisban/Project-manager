@@ -61,8 +61,8 @@ public class ProjectService {
     public ProjectResponse update(Long id, ProjectRequest request, AppUserPrincipal user) {
         Project project = requireAccessible(id, user);
         String name = request.name().trim();
-        Long ownerId = project.getOwner() != null ? project.getOwner().getId() : null;
-        if (ownerId != null && projectRepository.existsByOwnerIdAndNameIgnoreCaseAndIdNot(ownerId, name, id)) {
+        Long ownerId = project.getOwner().getId();
+        if (projectRepository.existsByOwnerIdAndNameIgnoreCaseAndIdNot(ownerId, name, id)) {
             throw new ConflictException(DUPLICATE_NAME);
         }
         project.setName(name);

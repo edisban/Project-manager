@@ -124,7 +124,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/fullstackproject-${{ matrix.name }}
+          images: ghcr.io/${{ github.repository_owner }}/projectmanager-${{ matrix.name }}
           tags: |
             type=sha,format=long
             type=raw,value=latest
