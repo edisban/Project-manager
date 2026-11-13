@@ -2,6 +2,19 @@
 
 A full-stack app for organising projects and the students working on them.
 
+## About
+
+Project Manager is a web app for anyone who runs several projects with students, such as a
+teacher supervising class assignments, a university lab assigning theses, or a team lead running
+an internship programme. Each user creates an account, sets up their projects and adds the
+students who work on each one (name, student ID, role, date of birth and notes). Students can be
+found instantly by name or ID, in any alphabet, and moved between projects as plans change. An
+overview dashboard shows totals, the largest projects and how many students were added over the
+last two weeks. Every account is private: users only see their own projects, while an
+administrator account can see and manage everything.
+
+## Features
+
 - **Landing page** – a public introduction for visitors; signed-in users go straight to their overview.
 - **Overview dashboard** – totals, students added per day (last 14 days), largest projects and newest students.
 - **Welcome tour** – a short guided tour on first sign-in; replay it any time from the account menu.
@@ -32,6 +45,19 @@ The SPA and the API are served from **one origin**, which is what allows the aut
 | Tests | JUnit 5 + Mockito, Testcontainers, Vitest + Testing Library + MSW, Playwright |
 | Delivery | Docker multi-stage images (non-root), Docker Compose, GitHub Actions |
 
+### Data model
+
+```
+User 1 ──< * Project 1 ──< * Student
+```
+
+- A **user** has a unique username, an Argon2id password hash and a role (`USER` or `ADMIN`).
+- A **project** always has an owner; names are unique per owner.
+- A **student** belongs to one project; student IDs are unique within a project.
+- Deleting a user deletes their projects, and deleting a project deletes its students (database cascades).
+
+The schema is created by a single Flyway migration, [`V1__init.sql`](server/src/main/resources/db/migration/V1__init.sql).
+
 ## Security model
 
 - Passwords hashed with Argon2id; the API never returns the JWT in a response body.
@@ -61,6 +87,17 @@ publishes them on `127.0.0.1` (ports from `.env`):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
+```
+
+The Compose project is named `projectmanager`, so the containers are `projectmanager_frontend`,
+`projectmanager_backend`, `projectmanager_postgres` and `projectmanager_redis`
+(e.g. `docker logs projectmanager_backend`).
+
+To start over with an empty database (this deletes all local data):
+
+```bash
+docker compose down -v
+docker compose up -d --build --wait
 ```
 
 ## Development
