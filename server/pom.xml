@@ -26,6 +26,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <jjwt.version>0.12.6</jjwt.version>
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+        <bouncycastle.version>1.81</bouncycastle.version>
         <!-- 1.21.4+ is required for Docker Engine 29 (minimum API version 1.44) -->
         <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
@@ -89,6 +90,13 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- Argon2 implementation used by Spring Security's Argon2PasswordEncoder -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
         </dependency>
 
         <!-- Structured (JSON) logging for the prod profile -->

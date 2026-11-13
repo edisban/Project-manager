@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Application user. Passwords are stored as BCrypt hashes.
+ * Application user. Passwords are stored as Argon2id hashes.
  */
 @Entity
 @Table(name = "users")
