@@ -3,10 +3,12 @@
 # to reach them from local tools, add the debug overlay:
 #   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 
+name: projectmanager
+
 services:
   db:
     image: postgres:16-alpine
-    container_name: fullstack_postgres
+    container_name: projectmanager_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-Project_db}
@@ -24,7 +26,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: fullstack_redis
+    container_name: projectmanager_redis
     restart: unless-stopped
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
@@ -42,7 +44,7 @@ services:
   backend:
     build:
       context: ./server
-    container_name: fullstack_backend
+    container_name: projectmanager_backend
     restart: unless-stopped
     environment:
       DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-Project_db}
@@ -73,7 +75,7 @@ services:
   frontend:
     build:
       context: ./client
-    container_name: fullstack_frontend
+    container_name: projectmanager_frontend
     restart: unless-stopped
     depends_on:
       backend:

@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import com.edis.backendproject.repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -59,6 +60,9 @@ class ApiIT {
 
     @Autowired
     ObjectMapper json;
+
+    @Autowired
+    UserRepository users;
 
     // ---------------------------------------------------------------- authentication
 
@@ -97,6 +101,15 @@ class ApiIT {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.username").value(username))
                     .andExpect(jsonPath("$.data.expiresAt").isNotEmpty());
+        }
+
+        @Test
+        void passwordsAreStoredAsArgon2idHashes() throws Exception {
+            String username = uniqueName();
+            register(username, PASSWORD).andExpect(status().isCreated());
+
+            String stored = users.findByUsername(username).orElseThrow().getPassword();
+            assertThat(stored).startsWith("$argon2id$").doesNotContain(PASSWORD);
         }
 
         @Test

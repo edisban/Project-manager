@@ -34,7 +34,7 @@ The SPA and the API are served from **one origin**, which is what allows the aut
 
 ## Security model
 
-- Passwords hashed with BCrypt; the API never returns the JWT in a response body.
+- Passwords hashed with Argon2id; the API never returns the JWT in a response body.
 - The JWT travels in an **HttpOnly, SameSite=Strict** cookie (`Secure` when `AUTH_COOKIE_SECURE=true`),
   so JavaScript cannot read it.
 - **CSRF** protection with the double-submit cookie pattern (`XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header).
