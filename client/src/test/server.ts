@@ -113,7 +113,7 @@ const handlers = [
     const project = makeProject({
       name: body.name,
       description: body.description || null,
-      ownerUsername: db.user?.username ?? null,
+      ownerUsername: db.user?.username ?? "alice",
     });
     db.projects.unshift(project);
     return ok(project, 201, "Project created");

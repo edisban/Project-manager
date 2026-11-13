@@ -47,9 +47,9 @@ public class Project {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    /** Owner of the project; {@code null} for projects created before ownership existed; only admins can see those. */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "owner_id")
+    /** The user who created the project. */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
     /** Read-only, computed by the database on load. */
@@ -64,6 +64,6 @@ public class Project {
     }
 
     public boolean isOwnedBy(Long userId) {
-        return owner != null && owner.getId() != null && owner.getId().equals(userId);
+        return owner.getId().equals(userId);
     }
 }

@@ -13,8 +13,8 @@ src/main/java/com/edis/backendproject/
 ├── dto/          Request/response records, ApiResponse envelope, PageResponse
 ├── security/     JWT, auth cookie, CSRF, security filter chain
 ├── exception/    Domain exceptions and the global exception handler
-└── config/       Admin bootstrap, Flyway strategy
-src/main/resources/db/migration/   Flyway migrations (V1, V6 – V2-V5 are retired numbers)
+└── config/       Admin bootstrap
+src/main/resources/db/migration/   Flyway migrations
 src/test/java/…/service/           Unit tests (Mockito)
 src/test/java/…/api/               Integration tests (*IT, Testcontainers PostgreSQL + Redis)
 ```
@@ -59,7 +59,6 @@ return 404.
 | `MAX_LOGIN_ATTEMPTS`, `LOGIN_LOCKOUT` | `5`, `15m` | Brute-force protection |
 | `APP_ADMIN_USERNAME`, `APP_ADMIN_PASSWORD` | – | Admin created on first start (password ≥ 8 chars) |
 | `CORS_ALLOWED_ORIGINS` | empty | Only for frontends on another origin; CORS is off when empty |
-| `FLYWAY_REPAIR_ON_START` | `false` | One-off repair for databases from older versions |
 | `SPRING_PROFILES_ACTIVE=prod` | – | JSON (Logstash) console logging |
 
 ## Running locally without Docker
